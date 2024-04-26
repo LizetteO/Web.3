@@ -7,6 +7,193 @@ sidebar_label: 'Tutorial: Sending Transactions'
 
 This guide provides insights into sending transactions using web3.js, covering various scenarios from utilizing a local wallet to sending raw transactions.
 
+:::note
+Web3.js uses transactions type 2 by default
+:::
+
+## Transaction Type 0 (Legacy)
+
+### Raw Transaction 
+
+A Legacy Transaction refers to a transaction that was created using an older version of Ethereum's transaction format, also known as "transaction type 0". This transaction format was used before the EIP-1559 upgrade, which was implemented in August 2021.
+
+```ts
+import { Web3 } from"web3";
+
+const web3 = new Web3("https://rpc2.sepolia.org");
+
+async function txLegacy() {
+  const wallet = web3.eth.wallet.add("YOUR_PRIVATE_KEY"); //make sure you have funds
+
+  const sender = wallet[0].address;
+  const recipient = "0x807BFe4940016B5a7FdA19482042917B02e68359";
+  const value = 1; //wei
+  const nonce = await web3.eth.getTransactionCount(sender);
+  const gas = 21000;
+  const gasPrice = await web3.eth.getGasPrice();
+
+  const tx = {
+    from: sender,
+    to: recipient,
+    value,
+    nonce,
+    gas,
+    gasPrice,
+    // highlight-next-line
+    type: 0,
+  };
+
+  const txReceipt = await web3.eth.sendTransaction(tx);
+  console.log("Tx hash", txReceipt.transactionHash);
+}
+
+txLegacy();
+```
+
+### ERC20 Interaction
+
+```ts
+import { Web3 } from "web3";
+
+const web3 = new Web3("https://rpc2.sepolia.org");
+
+async function transfer() {
+  //initialize wallet
+  const wallet = web3.eth.wallet.add("PRIVATE_KEY");
+
+  //initialize contract
+  const myERC20 = new web3.eth.Contract(ABI, ADDRESS);
+
+  //send transfer and specify the type
+  const txReceipt = await myERC20.methods.transfer(TO, VALUE).send({
+    from: wallet[0].address,
+    // highlight-next-line
+    type: 0,
+  });
+
+  console.log(txReceipt.transactionHash);
+}
+
+transfer();
+```
+
+## Transaction Type 1 (EIP-2930)
+
+This EIP was introduced in April 2021, it introduces a feature called 'Transaction Type and Access List.' This improvement allows saving gas on cross-contract calls by declaring in advance which contract and storage slots will be accessed.
+
+### Raw Transaction
+
+```ts
+import { Web3 } from"web3";
+
+const web3 = new Web3("https://rpc2.sepolia.org");
+
+async function txEIP2930() {
+  const wallet = web3.eth.wallet.add("YOUR_PRIVATE_KEY");
+
+  const sender = wallet[0].address;
+  const contractAddress1 = "0x...";
+  const contractAddress2 = "0x..."
+  const nonce = await web3.eth.getTransactionCount(sender);
+  const gas = 500000; //could be higher
+  const gasPrice = await web3.eth.getGasPrice();
+
+  const tx = {
+    from: sender,
+    to: contractAddress1, //the contract we are calling
+    data: "0x...",
+    gas,
+    gasPrice,
+    // highlight-next-line
+    type: 1,
+    accessList: [
+      {
+        address: contractAddress2, //contract1 is calling contract2
+        storageKeys: [
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0x0000000000000000000000000000000000000000000000000000000000000001",
+        ],
+      },
+    ],
+  };
+
+
+  const txReceipt = await web3.eth.sendTransaction(tx);
+  console.log("Tx hash", txReceipt.transactionHash);
+}
+
+txEIP2930()
+```
+
+## Transaction Type 2 (EIP-1559)
+
+When a user creates an EIP-1559 transaction, they specify the maximum fee they are willing to pay `maxFeePerGas` as well as a tip `maxPriorityFeePerGas` to incentivize the miner. The actual fee paid by the user is then determined by the network based on the current demand for block space and the priority of the transaction.
+
+### Raw Transaction
+
+```ts
+import { Web3 } from"web3";
+
+const web3 = new Web3("https://rpc2.sepolia.org");
+
+async function txEIP1559() {
+  const wallet = web3.eth.wallet.add("YOUR_PRIVATE_KEY"); //make sure you have funds
+
+  const sender = wallet[0].address;
+  const recipient = "0x807BFe4940016B5a7FdA19482042917B02e68359";
+  const value = 1; //wei
+  const nonce = await web3.eth.getTransactionCount(sender);
+  const gasLimit = 21000;
+  const maxFeePerGas = Number((await web3.eth.calculateFeeData()).maxFeePerGas);
+  const maxPriorityFeePerGas = Number((await web3.eth.calculateFeeData()).maxPriorityFeePerGas);
+
+  const tx = {
+    from: sender,
+    to: recipient,
+    value,
+    nonce,
+    gasLimit,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    // highlight-next-line
+    type: 2,
+  };
+
+  const txReceipt = await web3.eth.sendTransaction(tx);
+  console.log("Tx hash", txReceipt.transactionHash);
+}
+
+txEIP1559();
+```
+
+### ERC20 Interaction
+
+```ts
+import { Web3 } from "web3";
+
+const web3 = new Web3("https://rpc2.sepolia.org");
+
+async function transfer() {
+  //initialize wallet
+  const wallet = web3.eth.wallet.add("PRIVATE_KEY");
+
+  //initialize contract
+  const myERC20 = new web3.eth.Contract(ABI, ADDRESS);
+
+  //send transfer and specify the type
+  const txReceipt = await myERC20.methods.transfer(TO, VALUE).send({
+    from: wallet[0].address,
+    // highlight-next-line
+    type: 2,
+  });
+
+  console.log(txReceipt.transactionHash);
+}
+
+transfer();
+```
+
+
 ## Sending transactions with a local wallet
 
 The simplest way to sign and send transactions is using a local wallet:
@@ -51,8 +238,8 @@ const rawTransaction = {
   from: account.address,
   to: '0x5875da5854c2adadbc1a7a448b5b2a09b26baff8', //random wallet or contract address
   value: 1, //optional - value in wei
-  maxFeePerGas: (await web3.eth.getBlock()).baseFeePerGas * 2n, //updated depending on the network
-  maxPriorityFeePerGas: 100000, //high
+  maxFeePerGas: Number((await web3.eth.calculateFeeData()).maxFeePerGas),
+  maxPriorityFeePerGas: Number((await web3.eth.calculateFeeData()).maxPriorityFeePerGas),
   gasLimit: 2000000
   nonce: await web3.eth.getTransactionCount(account.address), //optional - get the current nonce of the account 
   data: "0x0" //optional - encoded function signature and arguments 
